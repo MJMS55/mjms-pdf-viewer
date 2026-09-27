@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>mjms_pdf_viewer</id>
+    <name>MJMS-PDF-Viewer</name>
+    <summary>Visionneuse PDF avec navigation suivant/précédent</summary>
+    <description>Affiche les fichiers PDF dans le Viewer de Nextcloud avec navigation fluide entre fichiers d'un même dossier.</description>
+    <version>1.0.0</version>
+    <licence>agpl</licence>
+    <author>Michel JORIS MJMS</author>
+    <namespace>MJMSPdfViewer</namespace>
+    <category>files</category>
+    <bugs></bugs>
+    <dependencies>
+        <nextcloud min-version="30" max-version="34"/>
+    </dependencies>
+</info>
