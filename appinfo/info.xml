@@ -10,7 +10,7 @@
     <author>Michel JORIS MJMS</author>
     <namespace>MJMSPdfViewer</namespace>
     <category>files</category>
-    <bugs></bugs>
+    <bugs>https://github.com/MJMS55/mjms-pdf-viewer</bugs>
     <dependencies>
         <nextcloud min-version="30" max-version="34"/>
     </dependencies>
