@@ -13,6 +13,10 @@ Application Nextcloud de visualisation de PDF avec navigation entre les pages et
 
 - Nextcloud 30 à 34
 - Node.js et npm (pour la compilation, en développement uniquement)
+- L'application officielle **PDF Viewer** (`files_pdfviewer`) doit être désactivée pour éviter tout conflit sur le mimetype `application/pdf` :
+  ```bash
+  php occ app:disable files_pdfviewer
+  ```
 
 ## Installation
 
