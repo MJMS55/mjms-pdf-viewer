@@ -6,6 +6,9 @@ use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\Util;
+use OCP\App\IAppManager;
+use OCP\AppFramework\Services\IInitialState;
+use OCP\IUserSession;
 
 class Application extends App implements IBootstrap {
     public const APP_ID = 'mjms_pdf_viewer';
@@ -18,6 +21,11 @@ class Application extends App implements IBootstrap {
     }
 
     public function boot(IBootContext $context): void {
+        $context->injectFn(function (IInitialState $state, IAppManager $apps, IUserSession $session): void {
+            $user = $session->getUser();
+            $state->provideInitialState('manager-enabled', $user !== null && $apps->isEnabledForUser('mjms_pdf_manager', $user));
+        });
         Util::addInitScript(self::APP_ID, 'mjms_pdf_viewer-main');
+        Util::addStyle(self::APP_ID, 'viewer');
     }
 }

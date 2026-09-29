@@ -65,3 +65,17 @@ AGPL-3.0-or-later
 ## Auteur
 
 MJMS — [mjms.fr](https://mjms.fr) — contact@mjms.fr
+
+## Mise à jour 1.1.0 : ouvrir dans Manager
+
+Installer également MJMS-PDF-Manager 0.3.0 et l’activer pour l’utilisateur. Ouvrir un PDF avec cette visionneuse, puis **Actions → Ouvrir dans MJMS-PDF-Manager**. Un nouvel onglet ouvre le PDF dans l’atelier ; aucun fichier n’est modifié à cette étape. Le lien n’est pas proposé aux visiteurs anonymes ni si Manager est désactivé.
+
+Les styles isolés sont chargés avec l’API Nextcloud dans css/viewer.css. Le JavaScript compilé est fourni : aucune compilation nécessaire sur le serveur. Pour reproduire la compilation : npm ci --ignore-scripts puis npm run build. La configuration de compilation existante annonce Node 20/npm 9–10 ; la livraison a compilé avec Node 24.20/npm 12 avec cet avertissement de version et des avertissements de taille des ressources.
+
+Validation locale : compilation réussie et syntaxe PHP vérifiée. Le test d’intégration dans le Viewer de votre instance Nextcloud 34 reste nécessaire. L’audit des dépendances de production signale deux alertes de faible gravité liées à Vue 2 (analyse de modèles HTML), sans correctif compatible proposé. Les modèles de cette app sont fixes et précompilés. L’outillage de développement existant signale également des alertes ; node_modules n’est pas distribué.
+
+## Correctif 1.1.1
+
+Le composant signale maintenant update:loaded au Viewer natif après le rendu de la première page. Les erreurs de lecture/rendu sont transmises au Viewer pour remplacer l’indicateur par une erreur. Le rendu démarre après montage du canvas ; les changements de document et la fermeture annulent les tâches précédentes. Les URL source fournies par le Viewer sont prises en charge, avec davPath en repli.
+
+Installer cette archive dans apps/mjms_pdf_viewer, effectuer la mise à jour Nextcloud si demandée puis Ctrl+F5. Manager reste inchangé. Tests de régression : npm test. Contrat du Viewer : https://github.com/nextcloud/viewer/blob/master/src/views/Viewer.vue (loaded.sync et événement error). L’intégration sur votre serveur reste à confirmer.
