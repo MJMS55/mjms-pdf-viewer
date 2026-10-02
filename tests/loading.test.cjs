@@ -6,7 +6,7 @@ const script = fs.readFileSync('src/views/PDFView.vue', 'utf8').match(/<script>(
   .replace(/^import .*$/gm, '').replace('export default', 'module.exports =')
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b}); return {promise,resolve,reject} }
 function fixture(getDocument) {
- const context={module:{exports:{}},pdfjsLib:{GlobalWorkerOptions:{},getDocument},generateFilePath:()=>'/worker.mjs',generateUrl:p=>p,loadState:()=>true}
+ const context={URL,setTimeout,window:{location:{href:'https://cloud.test/files',origin:'https://cloud.test'},removeEventListener(){}},document:{removeEventListener(){}},module:{exports:{}},pdfjsLib:{GlobalWorkerOptions:{},getDocument},generateFilePath:()=>'/worker.mjs',generateUrl:p=>p,loadState:()=>true}
  vm.runInNewContext(script,context)
  const component=context.module.exports, events=[]
  const instance={...component.data(),source:'',davPath:'/test.pdf',fileid:7,$refs:{canvas:{getContext:()=>({})}},$nextTick:()=>Promise.resolve(),$emit:(...args)=>events.push(args)}
@@ -59,7 +59,49 @@ test('Unmount cancels pending rendering without sending stale completion',async(
 })
 test('Source URL is preferred and rapid page requests are serialized',async()=>{
  let url;const pdf=task(),{instance}=fixture(options=>{url=options.url;return pdf})
- instance.source='/source.pdf';await instance.loadDocument();assert.equal(url,'/source.pdf')
+ instance.source='/source.pdf';await instance.loadDocument();assert.equal(new URL(url).pathname,'/source.pdf');assert.ok(new URL(url).searchParams.has('mjmsPdfVersion'))
  const next=instance.nextPage();await instance.prevPage();await next
  assert.equal(instance.pageNum,2);assert.equal(instance.busy,false)
+})
+
+
+test('Reload changes cache key and preserves DAV query and fragment', async () => {
+ const requests=[],{instance}=fixture(options=>{requests.push(options);return task()})
+ instance.source='/remote.php/dav/files/user/a.pdf?token=secret#page=2'
+ await instance.loadDocument();await instance.loadDocument()
+ assert.notEqual(requests[0].url,requests[1].url)
+ const url=new URL(requests[1].url)
+ assert.equal(url.searchParams.get('token'),'secret');assert.equal(url.hash,'#page=2')
+ assert.equal(requests[1].httpHeaders['Cache-Control'],'no-cache, no-store')
+})
+test('Thumbnail navigation selects the target and rejects out-of-range pages',async()=>{
+ const {instance}=fixture(()=>task());await instance.loadDocument()
+ await instance.goToPage(2);assert.equal(instance.pageNum,2)
+ await instance.goToPage(3);assert.equal(instance.pageNum,2)
+ await instance.goToPage(0);assert.equal(instance.pageNum,2)
+})
+test('Thumbnails render every page in order',async()=>{
+ const rendered=[],{instance}=fixture(()=>task());instance._pdfDocument=await task().promise
+ instance.$refs.thumbnailCanvases=[{getContext:()=>({number:1})},{getContext:()=>({number:2})}]
+ instance._pdfDocument.getPage=async()=>({getViewport:({scale})=>({width:200*scale,height:300*scale}),render:({canvasContext})=>{rendered.push(canvasContext.number);return {promise:Promise.resolve(),cancel(){}}}})
+ await instance.renderThumbnails(instance._loadId)
+ assert.deepEqual(rendered,[1,2]);assert.ok(instance.$refs.thumbnailCanvases[0].width<=120)
+})
+
+test('PDF navigation reaches Viewer through intermediate Vue parents',()=>{
+ const calls=[],{instance}=fixture(()=>task())
+ const host={$options:{name:'Viewer'},hasPrevious:true,hasNext:true,previous(){calls.push('previous')},next(){calls.push('next')}}
+ instance.$parent={$options:{name:'NcModal'},$parent:host}
+ instance.changePdf(-1);instance.changePdf(1)
+ assert.deepEqual(calls,['previous','next'])
+ assert.equal(instance.pageNum,1)
+})
+test('PDF navigation respects boundaries, busy state and standalone mode',()=>{
+ const calls=[],{instance}=fixture(()=>task())
+ const host={$options:{name:'Viewer'},hasPrevious:false,hasNext:true,previous(){calls.push('previous')},next(){calls.push('next')}}
+ instance.$parent=host;instance.changePdf(-1)
+ instance.busy=true;instance.changePdf(1)
+ instance.busy=false;instance.changePdf(1)
+ instance.$parent=null;instance.changePdf(1)
+ assert.deepEqual(calls,['next']);assert.equal(instance.hasNextPdf,false)
 })
