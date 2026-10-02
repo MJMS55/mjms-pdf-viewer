@@ -1,6 +1,6 @@
 <template>
   <div class="pdf-viewer-wrapper mjms-pdf-viewer">
-    <div class="pdf-toolbar">
+    <div ref="toolbar" class="pdf-toolbar">
       <div class="pdf-file-navigation" role="group" aria-label="Navigation entre les PDF">
         <button aria-label="PDF précédent" :disabled="busy || !hasPreviousPdf" @click="changePdf(-1)">← PDF précédent</button>
         <button aria-label="PDF suivant" :disabled="busy || !hasNextPdf" @click="changePdf(1)">PDF suivant →</button>
@@ -41,6 +41,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = generateFilePath('mjms_pdf_viewer', 'js
 export default {
   name: 'PDFView',
   props: {
+    active: { type: Boolean, default: false },
     filename: { type: String, default: '' },
     davPath: { type: String, default: '' },
     source: { type: String, default: '' },
@@ -75,6 +76,7 @@ export default {
     this._pdfDocument = null
   },
   mounted() {
+    this.$nextTick(() => this.syncHeaderToolbar())
     this._onFocus = () => { if (!document.hidden && !this.busy) this.loadDocument() }
     this._onVisibility = () => { if (!document.hidden && !this.busy) this.loadDocument() }
     window.addEventListener('focus', this._onFocus)
@@ -82,15 +84,39 @@ export default {
     this.loadDocument()
   },
   beforeDestroy() {
+    this.restoreHeaderToolbar()
     window.removeEventListener('focus', this._onFocus)
     document.removeEventListener('visibilitychange', this._onVisibility)
     this._loadId++
     this.releaseDocument()
   },
   watch: {
+    active() { this.$nextTick(() => this.syncHeaderToolbar()) },
     documentUrl() { this.loadDocument() },
   },
   methods: {
+    restoreHeaderToolbar() {
+      if (!this._headerControls) return
+      if (this.$refs.toolbar && this.$el) this.$el.insertBefore(this.$refs.toolbar, this.$el.firstChild)
+      const header = this._headerControls.parentElement
+      this._headerControls.remove()
+      this._headerControls = null
+      if (header && !header.querySelector('.mjms-header-controls')) header.classList.remove('mjms-single-row')
+    },
+    syncHeaderToolbar() {
+      if (!this.active) { this.restoreHeaderToolbar(); return }
+      if (this._headerControls || !this.$refs.toolbar) return
+      const viewer = this.$el.closest('#viewer[data-handler="mjms-pdf-viewer"]')
+      const header = viewer?.querySelector('.modal-header')
+      // Standalone rendering keeps its toolbar inside the component.
+      if (!header) return
+      const controls = document.createElement('div')
+      controls.className = 'mjms-pdf-viewer mjms-header-controls'
+      controls.appendChild(this.$refs.toolbar)
+      header.prepend(controls)
+      header.classList.add('mjms-single-row')
+      this._headerControls = controls
+    },
     viewerHost() {
       // Viewer supplies the filtered/sorted file list and handles its navigation
       // callbacks, lazy loading and wrapping. Keep that behaviour in one adapter.

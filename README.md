@@ -79,3 +79,6 @@ Validation locale : compilation réussie et syntaxe PHP vérifiée. Le test d’
 Le composant signale maintenant update:loaded au Viewer natif après le rendu de la première page. Les erreurs de lecture/rendu sont transmises au Viewer pour remplacer l’indicateur par une erreur. Le rendu démarre après montage du canvas ; les changements de document et la fermeture annulent les tâches précédentes. Les URL source fournies par le Viewer sont prises en charge, avec davPath en repli.
 
 Installer cette archive dans apps/mjms_pdf_viewer, effectuer la mise à jour Nextcloud si demandée puis Ctrl+F5. Manager reste inchangé. Tests de régression : npm test. Contrat du Viewer : https://github.com/nextcloud/viewer/blob/master/src/views/Viewer.vue (loaded.sync et événement error). L’intégration sur votre serveur reste à confirmer.
+
+## 1.1.4
+Commandes PDF intégrées à la ligne du titre Nextcloud. Sur petit écran, les commandes défilent horizontalement et le nom est tronqué ; les actions natives restent accessibles. La barre revient dans le composant en affichage autonome.
