@@ -82,3 +82,24 @@ Installer cette archive dans apps/mjms_pdf_viewer, effectuer la mise à jour Nex
 
 ## 1.1.4
 Commandes PDF intégrées à la ligne du titre Nextcloud. Sur petit écran, les commandes défilent horizontalement et le nom est tronqué ; les actions natives restent accessibles. La barre revient dans le composant en affichage autonome.
+
+
+## Correction de l’initialisation (3 octobre 2026)
+
+L’enregistrement du gestionnaire reste synchrone dans le script initial. PDF.js
+et le chemin du worker sont maintenant chargés à la demande, après ouverture du
+viewer. Les fichiers `js/mjms_pdf_viewer-pdfjs.js` et leurs fichiers associés
+doivent être livrés avec le bundle principal ; les chemins des fragments sont
+résolus depuis le script, y compris avec un répertoire Nextcloud personnalisé.
+
+L’état d’activation de Manager est évalué à la génération de la page et relu au
+montage, à DOMContentLoaded et à l’activation du PDF. Un PDF voisin préchargé
+renvoie son état de chargement quand il devient actif : le Viewer natif peut
+alors retirer son indicateur même si le premier rendu était déjà terminé.
+Le déplacement de la barre d’outils attend l’arrivée de l’en-tête ; son observer
+est nettoyé après insertion, désactivation ou destruction.
+
+Validation : 16 tests, compilation production, syntaxe PHP, banc d’essai navigateur
+clair/sombre, navigation par vignettes et actualisation d’un PDF modifié avec
+nouvelle URL et en-têtes anticache. Le dossier img et sa capture restent inchangés.
+Ces vérifications locales ne remplacent pas un essai sur l’instance Nextcloud réelle.

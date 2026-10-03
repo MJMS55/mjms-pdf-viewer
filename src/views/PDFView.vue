@@ -32,11 +32,20 @@
 </template>
 
 <script>
-import * as pdfjsLib from 'pdfjs-dist'
+// Keep the initialization script independent of PDF.js and its worker.
+let pdfjsPromise
+function loadPdfJs() {
+  if (!pdfjsPromise) {
+    pdfjsPromise = import(/* webpackChunkName: "pdfjs" */ 'pdfjs-dist').then(pdfjs => {
+      pdfjs.GlobalWorkerOptions.workerSrc = generateFilePath('mjms_pdf_viewer', 'js', 'pdf.worker.min.mjs')
+      return pdfjs
+    }).catch(error => { pdfjsPromise = null; throw error })
+  }
+  return pdfjsPromise
+}
 import { generateFilePath, generateUrl } from '@nextcloud/router'
 import { loadState } from '@nextcloud/initial-state'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = generateFilePath('mjms_pdf_viewer', 'js', 'pdf.worker.min.mjs')
 
 export default {
   name: 'PDFView',
@@ -49,7 +58,8 @@ export default {
   },
   data() {
     return {
-      managerEnabled: loadState('mjms_pdf_viewer', 'manager-enabled', false),
+      managerEnabled: false,
+      loaded: false,
       showThumbnails: true,
       busy: false,
       errorMessage: '',
@@ -76,6 +86,9 @@ export default {
     this._pdfDocument = null
   },
   mounted() {
+    this.refreshManagerState()
+    this._onReady = () => { this.refreshManagerState(); this.syncHeaderToolbar() }
+    document.addEventListener('DOMContentLoaded', this._onReady)
     this.$nextTick(() => this.syncHeaderToolbar())
     this._onFocus = () => { if (!document.hidden && !this.busy) this.loadDocument() }
     this._onVisibility = () => { if (!document.hidden && !this.busy) this.loadDocument() }
@@ -84,6 +97,8 @@ export default {
     this.loadDocument()
   },
   beforeDestroy() {
+    document.removeEventListener('DOMContentLoaded', this._onReady)
+    this._headerObserver?.disconnect()
     this.restoreHeaderToolbar()
     window.removeEventListener('focus', this._onFocus)
     document.removeEventListener('visibilitychange', this._onVisibility)
@@ -91,10 +106,24 @@ export default {
     this.releaseDocument()
   },
   watch: {
-    active() { this.$nextTick(() => this.syncHeaderToolbar()) },
+    active(value) {
+      if (value) {
+        this.refreshManagerState()
+        // Preloaded neighbours have no loaded.sync listener until activation.
+        this.$emit('update:loaded', this.loaded)
+      }
+      this.$nextTick(() => this.syncHeaderToolbar())
+    },
     documentUrl() { this.loadDocument() },
   },
   methods: {
+    refreshManagerState() {
+      this.managerEnabled = loadState('mjms_pdf_viewer', 'manager-enabled', false) === true
+    },
+    setLoaded(value) {
+      this.loaded = value
+      this.$emit('update:loaded', value)
+    },
     restoreHeaderToolbar() {
       if (!this._headerControls) return
       if (this.$refs.toolbar && this.$el) this.$el.insertBefore(this.$refs.toolbar, this.$el.firstChild)
@@ -104,12 +133,25 @@ export default {
       if (header && !header.querySelector('.mjms-header-controls')) header.classList.remove('mjms-single-row')
     },
     syncHeaderToolbar() {
-      if (!this.active) { this.restoreHeaderToolbar(); return }
+      if (!this.active) {
+        this._headerObserver?.disconnect()
+        this._headerObserver = null
+        this.restoreHeaderToolbar()
+        return
+      }
       if (this._headerControls || !this.$refs.toolbar) return
       const viewer = this.$el.closest('#viewer[data-handler="mjms-pdf-viewer"]')
       const header = viewer?.querySelector('.modal-header')
       // Standalone rendering keeps its toolbar inside the component.
-      if (!header) return
+      if (!header) {
+        if (!this._headerObserver && typeof MutationObserver !== 'undefined') {
+          this._headerObserver = new MutationObserver(() => this.syncHeaderToolbar())
+          this._headerObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-handler'] })
+        }
+        return
+      }
+      this._headerObserver?.disconnect()
+      this._headerObserver = null
       const controls = document.createElement('div')
       controls.className = 'mjms-pdf-viewer mjms-header-controls'
       controls.appendChild(this.$refs.toolbar)
@@ -147,7 +189,7 @@ export default {
     fail(error) {
       this.errorMessage = 'Impossible d’afficher ce PDF. Vérifiez son accès et réessayez.'
       // Native Viewer replaces failed handlers with its error view.
-      this.$emit('update:loaded', true)
+      this.setLoaded(true)
       this.$emit('error', error)
     },
     freshDocumentUrl() {
@@ -165,9 +207,11 @@ export default {
       this.errorMessage = ''
       this.pageNum = 1
       this.pageCount = 0
-      this.$emit('update:loaded', false)
+      this.setLoaded(false)
       try {
         if (!this.documentUrl) throw new Error('Missing PDF URL')
+        const pdfjsLib = await loadPdfJs()
+        if (id !== this._loadId) return
         const task = pdfjsLib.getDocument({
           url: this.freshDocumentUrl(),
           isEvalSupported: false,
@@ -183,7 +227,7 @@ export default {
         await this.$nextTick()
         await this.renderPage(id)
         if (id === this._loadId) {
-          this.$emit('update:loaded', true)
+          this.setLoaded(true)
           this.renderThumbnails(id).catch(() => {})
         }
       } catch (error) {

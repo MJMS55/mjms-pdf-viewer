@@ -1,6 +1,9 @@
 const CopyPlugin = require('copy-webpack-plugin')
 const webpackConfig = require('@nextcloud/webpack-vue-config')
 
+// Derive lazy chunk URLs from the initialization script, including custom app roots.
+webpackConfig.output.publicPath = 'auto'
+
 webpackConfig.entry = {
     main: { import: './src/main.js', filename: 'mjms_pdf_viewer-main.js' },
 }

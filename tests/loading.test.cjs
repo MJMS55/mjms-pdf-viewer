@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const vm = require('node:vm')
 const script = fs.readFileSync('src/views/PDFView.vue', 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
-  .replace(/^import .*$/gm, '').replace('export default', 'module.exports =')
+  .replace(/let pdfjsPromise[\s\S]*?(?=import \{ generateFilePath)/, 'const loadPdfJs = async () => pdfjsLib\n').replace(/^import .*$/gm, '').replace('export default', 'module.exports =')
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b}); return {promise,resolve,reject} }
 function fixture(getDocument) {
  const context={URL,setTimeout,window:{location:{href:'https://cloud.test/files',origin:'https://cloud.test'},removeEventListener(){}},document:{removeEventListener(){}},module:{exports:{}},pdfjsLib:{GlobalWorkerOptions:{},getDocument},generateFilePath:()=>'/worker.mjs',generateUrl:p=>p,loadState:()=>true}
@@ -13,7 +13,7 @@ function fixture(getDocument) {
  for(const [name,fn] of Object.entries(component.methods))instance[name]=fn.bind(instance)
  for(const [name,fn] of Object.entries(component.computed))Object.defineProperty(instance,name,{get:()=>fn.call(instance)})
  component.created.call(instance)
- return {instance,events,component}
+ return {instance,events,component,context}
 }
 function task(renderPromise=Promise.resolve()) {
  const render={promise:renderPromise,cancel(){this.cancelled=true}}
@@ -44,7 +44,7 @@ test('Missing URL reports an error instead of leaving loading active',async()=>{
 test('Switching documents ignores stale completion and releases old task',async()=>{
  const old=deferred(),first={promise:old.promise,destroy(){this.destroyed=true}},second=task();let count=0
  const {instance,events}=fixture(()=>++count===1?first:second)
- const stale=instance.loadDocument();instance.davPath='/second.pdf';await instance.loadDocument()
+ const stale=instance.loadDocument();await flush();instance.davPath='/second.pdf';await instance.loadDocument()
  old.reject(new Error('cancelled'));await stale
  assert.equal(first.destroyed,true);assert.equal(instance.pageCount,2)
  assert.equal(events.filter(e=>e[0]==='error').length,0)
@@ -104,4 +104,65 @@ test('PDF navigation respects boundaries, busy state and standalone mode',()=>{
  instance.busy=false;instance.changePdf(1)
  instance.$parent=null;instance.changePdf(1)
  assert.deepEqual(calls,['next']);assert.equal(instance.hasNextPdf,false)
+})
+
+
+test('Activation reports completion of a previously preloaded PDF without reloading', async () => {
+ let requests=0
+ const {instance,component,events}=fixture(()=>{requests++;return task()})
+ await instance.loadDocument()
+ events.length=0
+ instance.$nextTick=()=>Promise.resolve()
+ component.watch.active.call(instance,true)
+ assert.deepEqual(events,[['update:loaded',true]])
+ assert.equal(requests,1)
+})
+
+test('Activation during rendering keeps the spinner until rendering completes', async () => {
+ const rendered=deferred(),{instance,component,events}=fixture(()=>task(rendered.promise))
+ const done=instance.loadDocument();await flush();events.length=0
+ component.watch.active.call(instance,true)
+ assert.deepEqual(events,[['update:loaded',false]])
+ rendered.resolve();await done
+ assert.deepEqual(events,[['update:loaded',false],['update:loaded',true]])
+})
+
+test('Manager state can arrive after creation and is refreshed on activation', () => {
+ const {instance,component}=fixture(()=>task())
+ assert.equal(instance.managerUrl,null)
+ component.watch.active.call(instance,true)
+ assert.equal(instance.managerUrl,'/apps/mjms_pdf_manager/?fileId=7')
+})
+
+
+test('Disabled or missing Manager state never exposes the action', () => {
+ const {instance,context}=fixture(()=>task())
+ context.loadState=()=>false
+ instance.refreshManagerState()
+ assert.equal(instance.managerUrl,null)
+})
+
+test('Late header is attached once and observer is disconnected on deactivation', () => {
+ const {instance,context}=fixture(()=>task())
+ let header=null,observer,attached=0,restored=0,removed=0
+ const classes=new Set()
+ const controls={appendChild(){},remove(){removed++}}
+ const readyHeader={prepend(node){attached++;node.parentElement=this},classList:{add(c){classes.add(c)},remove(c){classes.delete(c)}},querySelector:()=>null}
+ context.MutationObserver=class {
+   constructor(callback){this.callback=callback;observer=this}
+   observe(){this.observing=true}
+   disconnect(){this.observing=false}
+ }
+ context.document.body={}
+ context.document.createElement=()=>controls
+ instance.active=true
+ instance.$refs.toolbar={}
+ instance.$el={closest:()=>({querySelector:()=>header}),insertBefore(){restored++}}
+ instance.syncHeaderToolbar()
+ assert.equal(observer.observing,true);assert.equal(attached,0)
+ header=readyHeader;observer.callback()
+ assert.equal(attached,1);assert.equal(observer.observing,false)
+ instance.syncHeaderToolbar();assert.equal(attached,1)
+ instance.active=false;instance.syncHeaderToolbar()
+ assert.equal(restored,1);assert.equal(removed,1);assert.equal(classes.size,0)
 })

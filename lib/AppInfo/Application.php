@@ -22,8 +22,11 @@ class Application extends App implements IBootstrap {
 
     public function boot(IBootContext $context): void {
         $context->injectFn(function (IInitialState $state, IAppManager $apps, IUserSession $session): void {
-            $user = $session->getUser();
-            $state->provideInitialState('manager-enabled', $user !== null && $apps->isEnabledForUser('mjms_pdf_manager', $user));
+            // Evaluate after boot, when authentication and all apps are ready.
+            $state->provideLazyInitialState('manager-enabled', function () use ($apps, $session): bool {
+                $user = $session->getUser();
+                return $user !== null && $apps->isEnabledForUser('mjms_pdf_manager', $user);
+            });
         });
         Util::addInitScript(self::APP_ID, 'mjms_pdf_viewer-main');
         Util::addStyle(self::APP_ID, 'viewer');
