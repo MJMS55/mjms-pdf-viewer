@@ -103,3 +103,13 @@ Validation : 16 tests, compilation production, syntaxe PHP, banc d’essai navig
 clair/sombre, navigation par vignettes et actualisation d’un PDF modifié avec
 nouvelle URL et en-têtes anticache. Le dossier img et sa capture restent inchangés.
 Ces vérifications locales ne remplacent pas un essai sur l’instance Nextcloud réelle.
+
+## 1.1.8 — renommage (base 1.1.5)
+Cette livraison repart de l’archive mjms_pdf_viewer-1.1.5.tar.gz. Le bouton Renommer permet de modifier le nom du PDF actif en conservant l’extension .pdf et la page affichée. Les doublons sont refusés par WebDAV (Overwrite: F), les droits sont vérifiés par Nextcloud et les liens publics ne proposent pas le bouton. La liste du Viewer est mise à jour et les événements natifs actualisent Files ; en cas d’échec de cette actualisation, un message demande de recharger la liste.
+Validation locale : 22 tests, dont formulaire monté en DOM Vue réel, compilation production et syntaxe PHP. L’intégration sur le serveur Nextcloud réel reste à confirmer.
+
+## 1.1.9
+Le renommage se fait dans une popup dédiée. Après un renommage réussi, quitter le visionneur recharge automatiquement la page du dossier pour afficher le nouveau nom. Aucun rechargement n’est déclenché si le renommage est annulé ou refusé.
+
+## 1.1.11 — langues
+L’interface suit automatiquement la langue du compte Nextcloud : français, anglais ou polonais, avec anglais par défaut. Les catalogues l10n contiennent les boutons, la popup, les erreurs et les libellés d’accessibilité. Le résumé et la description de la fiche App Store sont également traduits.

@@ -1,8 +1,9 @@
 <template>
   <div class="pdf-viewer-wrapper mjms-pdf-viewer">
     <div ref="toolbar" class="pdf-toolbar">
-      <div class="pdf-file-navigation" role="group" aria-label="Navigation entre les PDF">
+      <div ref="fileNavigation" class="pdf-file-navigation" role="group" aria-label="Navigation entre les PDF">
         <button aria-label="PDF précédent" :disabled="busy || !hasPreviousPdf" @click="changePdf(-1)">← PDF précédent</button>
+        <span ref="fileCounter" v-show="!counterInHeader" class="pdf-file-count mjms-pdf-file-count" role="status" aria-live="polite" :aria-label="pdfCounterLabel">{{ pdfCounterText }}</span>
         <button aria-label="PDF suivant" :disabled="busy || !hasNextPdf" @click="changePdf(1)">PDF suivant →</button>
       </div>
       <span class="pdf-page-label">Page</span>
@@ -47,10 +48,42 @@ import { generateFilePath, generateUrl } from '@nextcloud/router'
 import { loadState } from '@nextcloud/initial-state'
 
 
+// One close adapter per Viewer session, shared by preloaded PDF components.
+const returnTargets = new WeakMap()
+function rememberReturnTarget(host, file) {
+  const viewer = host?.Viewer
+  const router = window.OCP?.Files?.Router
+  if (!viewer || host.el || host.isStandalone || !router?.goToRoute
+    || typeof viewer.onClose !== 'function' || !file.fileid) return
+  let target = returnTargets.get(viewer)
+  if (!target || viewer.onClose !== target.wrapper) {
+    target = { original: viewer.onClose, directory: router.query?.dir, file }
+    target.wrapper = function(...args) {
+      if (viewer.onClose === target.wrapper) viewer.onClose = target.original
+      returnTargets.delete(viewer)
+      const result = target.original.apply(this, args)
+      // Wait for the native close callback to finish its own route update.
+      Promise.resolve(result).then(() => setTimeout(() => {
+        if (viewer.file || viewer.fileInfo || router.query?.dir !== target.directory) return
+        const query = { ...router.query }
+        delete query.openfile
+        delete query.opendetails
+        Promise.resolve(router.goToRoute(null,
+          { ...router.params, fileid: String(target.file.fileid) }, query, true)).catch(() => {})
+      }, 0)).catch(() => {})
+      return result
+    }
+    viewer.onClose = target.wrapper
+    returnTargets.set(viewer, target)
+  }
+  target.file = file
+}
+
 export default {
   name: 'PDFView',
   props: {
     active: { type: Boolean, default: false },
+    fileList: { type: Array, default: () => [] },
     filename: { type: String, default: '' },
     davPath: { type: String, default: '' },
     source: { type: String, default: '' },
@@ -59,6 +92,7 @@ export default {
   data() {
     return {
       managerEnabled: false,
+      counterInHeader: false,
       loaded: false,
       showThumbnails: true,
       busy: false,
@@ -68,6 +102,39 @@ export default {
     }
   },
   computed: {
+    pdfFiles() {
+      const nativeFiles = this.viewerHost()?.fileList
+      const files = nativeFiles?.length ? nativeFiles : this.fileList
+      return files.filter(file => {
+        if (!file || file.type === 'folder' || file.mime === 'httpd/unix-directory') return false
+        const mime = file.mime || file.mimetype
+        return mime ? mime === 'application/pdf' : /\.pdf$/i.test(file.filename || file.basename || file.name || '')
+      })
+    },
+    pdfPosition() {
+      // The native index is authoritative for the active PDF, including arrows,
+      // keyboard navigation and slideshow. Preloaded neighbours use their own id.
+      const host = this.viewerHost()
+      const current = host?.fileList?.[host.currentIndex]
+      if (this.active && current) {
+        const nativeIndex = this.pdfFiles.indexOf(current)
+        if (nativeIndex !== -1) return nativeIndex + 1
+      }
+      // Native file info can expose a different path spelling from the list.
+      const index = this.pdfFiles.findIndex(file =>
+        (this.filename && file.filename === this.filename)
+        || (this.fileid != null && String(file.fileid ?? file.id) === String(this.fileid)))
+      if (index !== -1) return index + 1
+      return current ? this.pdfFiles.indexOf(current) + 1 : 0
+    },
+    pdfCounterText() {
+      if (!this.pdfFiles.length) return this.viewerHost() ? '…' : '1/1'
+      return this.pdfPosition ? this.pdfPosition + '/' + this.pdfFiles.length
+        : this.pdfFiles.length + ' PDF'
+    },
+    pdfCounterLabel() {
+      return this.pdfPosition ? 'PDF ' + this.pdfPosition + ' sur ' + this.pdfFiles.length : this.pdfCounterText
+    },
     hasPreviousPdf() { return this.viewerHost()?.hasPrevious === true },
     hasNextPdf() { return this.viewerHost()?.hasNext === true },
     documentUrl() { return this.source || this.davPath },
@@ -87,6 +154,7 @@ export default {
   },
   mounted() {
     this.refreshManagerState()
+    this.rememberCurrentPdf()
     this._onReady = () => { this.refreshManagerState(); this.syncHeaderToolbar() }
     document.addEventListener('DOMContentLoaded', this._onReady)
     this.$nextTick(() => this.syncHeaderToolbar())
@@ -108,15 +176,21 @@ export default {
   watch: {
     active(value) {
       if (value) {
+        this.rememberCurrentPdf(true)
         this.refreshManagerState()
         // Preloaded neighbours have no loaded.sync listener until activation.
         this.$emit('update:loaded', this.loaded)
       }
       this.$nextTick(() => this.syncHeaderToolbar())
     },
-    documentUrl() { this.loadDocument() },
+    pdfCounterText() { this.$nextTick(() => this.syncHeaderToolbar()) },
+    documentUrl() { this.rememberCurrentPdf(); this.loadDocument() },
+    fileid() { this.rememberCurrentPdf() },
   },
   methods: {
+    rememberCurrentPdf(active = this.active) {
+      if (active) rememberReturnTarget(this.viewerHost(), { fileid: this.fileid, filename: this.filename })
+    },
     refreshManagerState() {
       this.managerEnabled = loadState('mjms_pdf_viewer', 'manager-enabled', false) === true
     },
@@ -125,6 +199,9 @@ export default {
       this.$emit('update:loaded', value)
     },
     restoreHeaderToolbar() {
+      this._headerCounter?.remove()
+      this._headerCounter = null
+      this.counterInHeader = false
       if (!this._headerControls) return
       if (this.$refs.toolbar && this.$el) this.$el.insertBefore(this.$refs.toolbar, this.$el.firstChild)
       const header = this._headerControls.parentElement
@@ -132,40 +209,73 @@ export default {
       this._headerControls = null
       if (header && !header.querySelector('.mjms-header-controls')) header.classList.remove('mjms-single-row')
     },
+    observeHeader(root) {
+      if (!root || this._headerObserverRoot === root || typeof MutationObserver === 'undefined') return
+      this._headerObserver?.disconnect()
+      this._headerObserverRoot = root
+      this._headerObserver = new MutationObserver(() => this.syncHeaderToolbar())
+      this._headerObserver.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-handler'] })
+    },
     syncHeaderToolbar() {
       if (!this.active) {
         this._headerObserver?.disconnect()
         this._headerObserver = null
+        this._headerObserverRoot = null
         this.restoreHeaderToolbar()
         return
       }
-      if (this._headerControls || !this.$refs.toolbar) return
+      if (!this.$refs.toolbar) return
+      // Modal content can be teleported away from the logical Vue parent.
+      const host = this.viewerHost()
       const viewer = this.$el.closest('#viewer[data-handler="mjms-pdf-viewer"]')
+        || host?.$el || this.$el.closest('.modal-mask')
       const header = viewer?.querySelector('.modal-header')
       // Standalone rendering keeps its toolbar inside the component.
       if (!header) {
-        if (!this._headerObserver && typeof MutationObserver !== 'undefined') {
-          this._headerObserver = new MutationObserver(() => this.syncHeaderToolbar())
-          this._headerObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-handler'] })
-        }
+        this.observeHeader(document.body)
         return
       }
-      this._headerObserver?.disconnect()
-      this._headerObserver = null
-      const controls = document.createElement('div')
-      controls.className = 'mjms-pdf-viewer mjms-header-controls'
-      controls.appendChild(this.$refs.toolbar)
-      header.prepend(controls)
-      header.classList.add('mjms-single-row')
-      this._headerControls = controls
+      if (this._headerControls?.parentElement !== header) {
+        this.restoreHeaderToolbar()
+        const controls = document.createElement('div')
+        controls.className = 'mjms-pdf-viewer mjms-header-controls'
+        controls.appendChild(this.$refs.toolbar)
+        header.prepend(controls)
+        header.classList.add('mjms-single-row')
+        this._headerControls = controls
+      }
+      const menu = header.querySelector('.icons-menu')
+      if (menu) {
+        // Keep the component's own counter in its template. The header copy is
+        // owned by this adapter, so native Vue patches cannot orphan its vnode.
+        if (!this._headerCounter) {
+          this._headerCounter = document.createElement('span')
+          this._headerCounter.className = 'pdf-file-count mjms-pdf-file-count'
+          this._headerCounter.setAttribute('role', 'status')
+          this._headerCounter.setAttribute('aria-live', 'polite')
+        }
+        const counter = this._headerCounter
+        if (counter.textContent !== this.pdfCounterText) counter.textContent = this.pdfCounterText
+        counter.setAttribute('aria-label', this.pdfCounterLabel)
+        this.counterInHeader = true
+        const play = menu.querySelector('button.play-pause-icons')
+        // Reinsert when Nextcloud adds/removes or replaces its slideshow button.
+        const anchor = play || menu.firstChild
+        if (anchor !== counter && (counter.parentElement !== menu || counter.nextSibling !== anchor)) {
+          menu.insertBefore(counter, anchor)
+        }
+      }
+      // The slideshow button may be inserted after the folder list arrives.
+      this.observeHeader(viewer)
     },
     viewerHost() {
       // Viewer supplies the filtered/sorted file list and handles its navigation
       // callbacks, lazy loading and wrapping. Keep that behaviour in one adapter.
       let parent = this.$parent
       while (parent) {
-        if (parent.$options?.name === 'Viewer'
-          && typeof parent.previous === 'function' && typeof parent.next === 'function') return parent
+        if (typeof parent.previous === 'function' && typeof parent.next === 'function'
+          && (parent.$options?.name === 'Viewer' || (Array.isArray(parent.fileList)
+            && Number.isInteger(parent.currentIndex)))) return parent
         parent = parent.$parent
       }
       return null

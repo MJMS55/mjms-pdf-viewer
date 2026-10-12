@@ -26,3 +26,21 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 - Affichage des fichiers PDF dans le Viewer de Nextcloud, via PDF.js
 - Navigation page suivante / page précédente au sein d'un document
 - Navigation fichier suivant / fichier précédent entre les PDF d'un même dossier, via le Viewer natif
+
+## 1.1.8 — 2026-10-12
+- Ajout du renommage du PDF actif sur la base de l’archive 1.1.5 fournie.
+- Conservation de la page courante et mise à jour des chemins de navigation.
+- Refus des noms invalides et des doublons ; gestion des fichiers verrouillés et des droits insuffisants.
+- Bouton Vignettes : commandes placées au-dessus du titre pour éviter son interception des clics ; bascule explicite avec état accessible.
+
+## 1.1.9 — 2026-10-12
+- Formulaire de renommage dans une popup avec gestion du focus et annulation.
+- Rafraîchissement automatique de la page du dossier après fermeture du visionneur si un fichier a été renommé.
+
+## 1.1.10 — 2026-10-12
+- Surveillance de la fermeture par le composant Vue natif sans écrire dans les propriétés en lecture seule de l’API publique du Viewer.
+- Popup centrée horizontalement et verticalement dans la fenêtre.
+
+## 1.1.11 — 2026-10-12
+- Interface, messages et libellés d’accessibilité traduits en anglais, français et polonais.
+- Résumé et description de la fiche App Store disponibles dans les trois langues.

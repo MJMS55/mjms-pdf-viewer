@@ -1,0 +1,96 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "PDF navigation"
+msgstr ""
+
+msgid "Previous PDF"
+msgstr ""
+
+msgid "Next PDF"
+msgstr ""
+
+msgid "Page"
+msgstr ""
+
+msgid "Previous page"
+msgstr ""
+
+msgid "Next page"
+msgstr ""
+
+msgid "Refresh"
+msgstr ""
+
+msgid "Thumbnails"
+msgstr ""
+
+msgid "Rename"
+msgstr ""
+
+msgid "PDF actions"
+msgstr ""
+
+msgid "Actions"
+msgstr ""
+
+msgid "Open in MJMS-PDF-Manager"
+msgstr ""
+
+msgid "Rename PDF"
+msgstr ""
+
+msgid "PDF filename"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Renaming…"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "PDF pages"
+msgstr ""
+
+msgid "Go to page {page}"
+msgstr ""
+
+msgid "Page {page}"
+msgstr ""
+
+msgid "Choose a valid filename without forbidden characters."
+msgstr ""
+
+msgid "The filename must keep the .pdf extension."
+msgstr ""
+
+msgid "A file with this name already exists in this folder."
+msgstr ""
+
+msgid "The folder is no longer available."
+msgstr ""
+
+msgid "You do not have permission to rename this file."
+msgstr ""
+
+msgid "The file no longer exists."
+msgstr ""
+
+msgid "The file is locked. Please try again later."
+msgstr ""
+
+msgid "Renaming failed. Please try again."
+msgstr ""
+
+msgid "PDF renamed."
+msgstr ""
+
+msgid "PDF renamed. The folder will refresh when you close the viewer."
+msgstr ""
+
+msgid "Unable to display this PDF. Check your access and try again."
+msgstr ""
