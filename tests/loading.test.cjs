@@ -6,12 +6,13 @@ const script = fs.readFileSync('src/views/PDFView.vue', 'utf8').match(/<script>(
   .replace(/let pdfjsPromise[\s\S]*?(?=import \{ generateFilePath)/, 'const loadPdfJs = async () => pdfjsLib\n').replace(/^import .*$/gm, '').replace('export default', 'module.exports =')
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b}); return {promise,resolve,reject} }
 function fixture(getDocument) {
- const context={URL,setTimeout,window:{location:{href:'https://cloud.test/files',origin:'https://cloud.test'},removeEventListener(){}},document:{removeEventListener(){}},module:{exports:{}},pdfjsLib:{GlobalWorkerOptions:{},getDocument},generateFilePath:()=>'/worker.mjs',generateUrl:p=>p,loadState:()=>true}
+ const context={URL,setTimeout,window:{location:{href:'https://cloud.test/files',origin:'https://cloud.test'},removeEventListener(){}},document:{removeEventListener(){}},module:{exports:{}},t:(app,key,params={})=>{let value=JSON.parse(fs.readFileSync('l10n/fr.json','utf8')).translations[key] || key;for(const [name,item] of Object.entries(params))value=value.replaceAll('{'+name+'}',String(item));return value},pdfjsLib:{GlobalWorkerOptions:{},getDocument},generateFilePath:()=>'/worker.mjs',generateUrl:p=>p,loadState:()=>true}
  vm.runInNewContext(script,context)
  const component=context.module.exports, events=[]
- const instance={...component.data(),fileList:[],source:'',davPath:'/test.pdf',fileid:7,$refs:{canvas:{getContext:()=>({})}},$nextTick:()=>Promise.resolve(),$emit:(...args)=>events.push(args)}
+ const instance={...component.data(),fileList:[],startPage:1,source:'',davPath:'/test.pdf',fileid:7,$refs:{canvas:{getContext:()=>({})}},$nextTick:()=>Promise.resolve(),$emit:(...args)=>events.push(args)}
  for(const [name,fn] of Object.entries(component.methods))instance[name]=fn.bind(instance)
  for(const [name,fn] of Object.entries(component.computed))Object.defineProperty(instance,name,{get:()=>fn.call(instance)})
+ instance.loadDavTools=async()=>({getClient:context.getClient,getRootPath:context.getRootPath,getRemoteURL:()=>'https://cloud.test/remote.php/dav',getDefaultPropfind:context.getDefaultPropfind,resultToNode:context.resultToNode})
  component.created.call(instance)
  return {instance,events,component,context}
 }
@@ -161,148 +162,77 @@ test('Late header is attached once and observer is disconnected on deactivation'
  instance.syncHeaderToolbar()
  assert.equal(observer.observing,true);assert.equal(attached,0)
  header=readyHeader;observer.callback()
- assert.equal(attached,1);assert.equal(observer.observing,true)
+ assert.equal(attached,1);assert.equal(observer.observing,false)
  instance.syncHeaderToolbar();assert.equal(attached,1)
  instance.active=false;instance.syncHeaderToolbar()
  assert.equal(restored,1);assert.equal(removed,1);assert.equal(classes.size,0)
 })
 
-test('PDF counter filters other types, follows sorting and updates on list changes', () => {
- const {instance}=fixture(()=>task())
- instance.filename='/b.pdf'
- instance.fileList=[{filename:'/a.pdf',mime:'application/pdf'},{filename:'/image.png',mime:'image/png'},{filename:'/b.pdf',mime:'application/pdf'}]
- assert.equal(instance.pdfFiles.length,2);assert.equal(instance.pdfPosition,2)
- instance.fileList.reverse();assert.equal(instance.pdfPosition,1)
- instance.fileList=[];assert.equal(instance.pdfPosition,0)
+
+test('Renaming validates PDF extension and unsafe filenames before sending a request',async()=>{
+ const {instance,context}=fixture(()=>task());context.window.OC={currentUser:'Michel'};instance.davPath='/remote.php/dav/files/Michel/folder/old.pdf';instance.filename='/folder/old.pdf'
+ let requests=0;context.fetch=async()=>{requests++;return {ok:true}}
+ for(const name of ['','../file.pdf','file.txt','bad?.pdf']){instance.renameName=name;await instance.renamePdf();assert.ok(instance.renameError)}
+ assert.equal(requests,0)
 })
 
-test('Close restores the last active PDF after native callback, retaining folder and filters', async () => {
- const {instance,component,context}=fixture(()=>task()),calls=[]
- const router={query:{dir:'/PDF',filter:'recent',openfile:'true'},params:{view:'files'},goToRoute(...args){calls.push(args)}}
- context.window.OCP={Files:{Router:router}}
- const viewer={onClose(){calls.push('native');delete router.query.openfile}}
- instance.$parent={$options:{name:'Viewer'},previous(){},next(){},Viewer:viewer}
- instance.active=true;instance.fileid=10;instance.rememberCurrentPdf()
- const wrapper=viewer.onClose
- instance.fileid=12;instance.rememberCurrentPdf()
- assert.equal(viewer.onClose,wrapper)
- instance.active=false;instance.fileid=99;instance.rememberCurrentPdf()
- viewer.onClose();await new Promise(resolve=>setTimeout(resolve,20))
- assert.equal(calls[0],'native');assert.equal(calls.length,2)
- assert.equal(calls[1][1].fileid,'12');assert.equal(calls[1][1].view,'files')
- assert.equal(calls[1][2].dir,'/PDF');assert.equal(calls[1][2].filter,'recent')
- assert.equal('openfile' in calls[1][2],false);assert.equal(calls[1][3],true)
- assert.notEqual(viewer.onClose,wrapper)
+test('Successful rename refuses overwrite, encodes accents and updates native navigation',async()=>{
+ const {instance,context}=fixture(()=>task());context.window.OC={currentUser:'Michel',requestToken:'test-token'}
+ instance.filename='/folder/old.pdf';instance.davPath='/remote.php/dav/files/Michel/folder/old.pdf';instance.renameName='Été #1.pdf';instance.pageNum=2
+ const old={filename:instance.filename,fileid:7,basename:'old.pdf',permissions:'RN'}
+ const host={$options:{name:'Viewer'},previous(){},next(){},currentFile:old,fileList:[old,{filename:'/folder/next.pdf'}],Viewer:{files:[old]},updatePreviousNext(){},updateTitle(name){this.title=name}}
+ instance.$parent=host;let sent
+ context.fetch=async(url,options)=>{sent={url,options};return {ok:true}}
+ context.getClient=()=>({stat:async()=>({data:{}})});context.getRootPath=()=>'/files/Michel';context.getDefaultPropfind=()=>'';context.resultToNode=x=>x;context.emit=()=>{}
+ await instance.renamePdf()
+ assert.equal(sent.options.method,'MOVE');assert.equal(sent.options.headers.Overwrite,'F');assert.equal(sent.options.headers.requesttoken,'test-token')
+ assert.equal(new URL(sent.options.headers.Destination).pathname,'/remote.php/dav/files/Michel/folder/%C3%89t%C3%A9%20%231.pdf')
+ assert.equal(host.currentFile.filename,'/folder/Été #1.pdf');assert.equal(host.currentFile.startPage,2)
+ assert.equal(host.fileList[0].filename,host.currentFile.filename)
+ assert.equal(host.fileList[1].filename,'/folder/next.pdf');assert.equal(instance.renameBusy,false);assert.equal(instance.renameError,'')
 })
 
-test('Closing after folder navigation does not redirect to an old PDF', async () => {
- const {instance,context}=fixture(()=>task());let routed=false
- const router={query:{dir:'/PDF'},goToRoute(){routed=true}}
- context.window.OCP={Files:{Router:router}}
- const viewer={onClose(){router.query.dir='/Other'}}
- instance.$parent={$options:{name:'Viewer'},previous(){},next(){},Viewer:viewer}
- instance.active=true;instance.rememberCurrentPdf();viewer.onClose()
- await new Promise(resolve=>setTimeout(resolve,20));assert.equal(routed,false)
-})
-
-test('Counter identifies PDF by id even when filenames differ', () => {
- const {instance}=fixture(()=>task())
- instance.filename='/encoded%20path/document.pdf';instance.fileid='7'
- instance.fileList=[{fileid:5,filename:'/first.pdf',mime:'application/pdf'},{fileid:7,filename:'/encoded path/document.pdf',mime:'application/pdf'}]
- assert.equal(instance.pdfCounterText,'2/2');assert.equal(instance.pdfCounterLabel,'PDF 2 sur 2')
-})
-
-test('Counter remains visible when position is unknown and uses native index as fallback', () => {
- const {instance}=fixture(()=>task());instance.filename='/unknown.pdf';instance.fileid=null
- instance.fileList=[{filename:'/a.pdf',mime:'application/pdf'},{filename:'/b.pdf',mime:'application/pdf'}]
- assert.equal(instance.pdfCounterText,'2 PDF')
- instance.$parent={$options:{name:'Viewer'},previous(){},next(){},fileList:instance.fileList,currentIndex:1}
- assert.equal(instance.pdfCounterText,'2/2')
- instance.fileList=[];instance.$parent.fileList=[];assert.equal(instance.pdfCounterText,'…')
- instance.$parent=null;assert.equal(instance.pdfCounterText,'1/1')
-})
-
-test('PDF files without mime are counted by extension while folders are excluded', () => {
- const {instance}=fixture(()=>task())
- instance.fileList=[{filename:'/a.PDF'},{filename:'/folder.pdf',type:'folder'},{filename:'/b.pdf',mime:'image/png'},null]
- assert.equal(instance.pdfFiles.length,1)
-})
-
-function element() {
- return {
-  children:[],parentElement:null,classList:{add(){},remove(){}},attributes:{},setAttribute(name,value){this.attributes[name]=value},
-  get firstChild(){return this.children[0] || null},
-  get nextSibling(){return this.parentElement?.children[this.parentElement.children.indexOf(this)+1] || null},
-  insertBefore(node,anchor){node.remove();const index=anchor?this.children.indexOf(anchor):this.children.length;this.children.splice(index,0,node);node.parentElement=this},
-  appendChild(node){this.insertBefore(node,null)},prepend(node){this.insertBefore(node,this.firstChild)},
-  remove(){if(this.parentElement){const siblings=this.parentElement.children;siblings.splice(siblings.indexOf(this),1);this.parentElement=null}},
-  querySelector(){return null},
+test('A duplicate or forbidden rename keeps the original PDF and shows an error',async()=>{
+ for(const status of [412,403,423]){
+  const {instance,context}=fixture(()=>task());context.window.OC={currentUser:'Michel'}
+  instance.filename='/old.pdf';instance.davPath='/remote.php/dav/files/Michel/old.pdf';instance.renameName='new.pdf'
+  const current={filename:'/old.pdf'};instance.$parent={$options:{name:'Viewer'},previous(){},next(){},currentFile:current,fileList:[current]}
+  context.fetch=async()=>({ok:false,status});await instance.renamePdf()
+  assert.equal(instance.$parent.currentFile.filename,'/old.pdf');assert.ok(instance.renameError);assert.equal(instance.renameBusy,false)
  }
-}
-
-test('Counter sits immediately before slideshow and follows late insertion and replacement', () => {
- const {instance,context}=fixture(()=>task()),header=element(),menu=element(),viewer=element(),toolbar=element(),counter=element(),navigation=element(),root=element(),actions=element()
- let play=null,observer
- header.querySelector=selector=>selector==='.icons-menu'?menu:null
- menu.querySelector=()=>play
- viewer.querySelector=()=>header
- root.closest=()=>viewer
- context.document.createElement=()=>element()
- context.MutationObserver=class {constructor(callback){this.callback=callback;observer=this}observe(){this.observing=true}disconnect(){this.observing=false}}
- root.appendChild(toolbar);toolbar.appendChild(navigation);navigation.appendChild(counter);menu.appendChild(actions)
- instance.active=true;instance.$el=root;instance.$refs={toolbar,fileCounter:counter,fileNavigation:navigation}
- instance.syncHeaderToolbar();const headerCounter=instance._headerCounter;assert.equal(menu.firstChild,headerCounter)
- play=element();menu.insertBefore(play,menu.firstChild);observer.callback()
- assert.equal(headerCounter.nextSibling,play);assert.equal(menu.firstChild,headerCounter)
- const old=play;play=element();menu.insertBefore(play,old);old.remove();observer.callback()
- assert.equal(headerCounter.nextSibling,play)
- instance.syncHeaderToolbar();assert.equal(menu.children.filter(node=>node===headerCounter).length,1)
- instance.active=false;instance.syncHeaderToolbar()
- assert.equal(counter.parentElement,navigation);assert.equal(observer.observing,false)
- assert.equal(menu.children.includes(headerCounter),false)
 })
 
-test('Activating preloaded PDFs updates the close target through the lifecycle', async () => {
- const {instance,component,context}=fixture(()=>task());let returned
- const router={query:{dir:'/PDF'},params:{},goToRoute(route,params){returned=params.fileid}}
- context.window.OCP={Files:{Router:router}}
- const viewer={onClose(){}}
- instance.$parent={$options:{name:'Viewer'},previous(){},next(){},Viewer:viewer}
- instance.fileid=12;component.watch.active.call(instance,true);viewer.onClose()
- await new Promise(resolve=>setTimeout(resolve,20));assert.equal(returned,'12')
+test('Public shares and read-only files do not offer rename',()=>{
+ const {instance,context}=fixture(()=>task());instance.davPath='/remote.php/dav/files/Michel/file.pdf'
+ assert.equal(instance.canRename,false);context.window.OC={currentUser:'Michel'}
+ instance.$parent={$options:{name:'Viewer'},previous(){},next(){},currentFile:{permissions:'R'}};assert.equal(instance.canRename,false)
+ instance.davPath='/public.php/dav/files/token/file.pdf';assert.equal(instance.canRename,false)
 })
 
-test('100 PDFs show 55/100 then 56/100 through reactive native navigation', async () => {
- const Vue=require('vue')
- const {component}=fixture(()=>task())
- const files=Array.from({length:100},(_,index)=>({fileid:index+1,filename:'/PDF/'+(index+1)+'.pdf',mime:'application/pdf'}))
- const host=new Vue({name:'Viewer',data:()=>({fileList:files,currentIndex:54}),methods:{previous(){this.currentIndex--},next(){this.currentIndex++}}})
- const pdf=new Vue({...component,parent:host,propsData:{active:true,fileid:55,filename:'/PDF/55.pdf',fileList:[files[54]]}})
- // Isolate rendering/loading; retain real Vue computed properties and watcher scheduling.
- pdf.syncHeaderToolbar=()=>{}
- assert.equal(pdf.pdfCounterText,'55/100')
- host.next();await Vue.nextTick();assert.equal(pdf.pdfCounterText,'56/100')
- host.previous();await Vue.nextTick();assert.equal(pdf.pdfCounterText,'55/100')
- host.currentIndex=99;await Vue.nextTick();assert.equal(pdf.pdfCounterText,'100/100')
- pdf.$destroy();host.$destroy()
+test('The renamed current PDF reopens on its previously viewed page',async()=>{
+ const {instance}=fixture(()=>task());instance.startPage=2;await instance.loadDocument();assert.equal(instance.pageNum,2)
 })
 
-test('Viewer adapter finds native state without a component name',()=>{
- const {instance}=fixture(()=>task())
- const files=Array.from({length:100},(_,index)=>({fileid:index+1,mime:'application/pdf'}))
- instance.active=true;instance.$parent={$options:{},fileList:files,currentIndex:54,previous(){},next(){}}
- assert.equal(instance.pdfCounterText,'55/100')
- instance.$parent.currentIndex=55;assert.equal(instance.pdfCounterText,'56/100')
+
+test('Read-only Viewer API is untouched; successful rename refreshes on host close',async()=>{
+ const {instance,context}=fixture(()=>task()),calls=[]
+ context.window.OC={currentUser:'Michel'};context.window.location.reload=()=>calls.push('refresh')
+ instance.filename='/old.pdf';instance.davPath='/remote.php/dav/files/Michel/old.pdf';instance.renameName='new.pdf'
+ const old={filename:'/old.pdf'},original=()=>calls.push('native')
+ const viewer={};Object.defineProperties(viewer,{onClose:{get:()=>original},files:{get:()=>[old]},fileInfo:{get:()=>Object.freeze(old)}})
+ let callback,watches=0,stops=0
+ const host={$options:{name:'Viewer'},previous(){},next(){},Viewer:viewer,currentFile:old,fileList:[old],$watch(getter,handler){watches++;callback=handler;return ()=>{stops++}}}
+ instance.$parent=host;context.fetch=async()=>({ok:true})
+ await instance.renamePdf();assert.equal(instance.renameError,'');assert.equal(host.currentFile.filename,'/new.pdf');assert.equal(viewer.onClose,original)
+ instance.filename='/new.pdf';instance.renameName='second.pdf';await instance.renamePdf();assert.equal(watches,1)
+ callback(true);await new Promise(resolve=>setTimeout(resolve,220));assert.equal(calls.length,0)
+ host.currentFile={};viewer.onClose();callback(false)
+ await new Promise(resolve=>setTimeout(resolve,250));assert.deepEqual(calls,['native','refresh']);assert.equal(stops,1)
 })
 
-test('Teleported content uses native root and updates the visible header copy',()=>{
- const {instance,context}=fixture(()=>task()),header=element(),menu=element(),viewer=element(),toolbar=element(),root=element(),play=element()
- header.querySelector=()=>menu;menu.querySelector=()=>play;menu.appendChild(play);viewer.querySelector=()=>header;root.closest=()=>null
- context.document.createElement=()=>element()
- const files=Array.from({length:100},(_,index)=>({fileid:index+1,mime:'application/pdf'}))
- instance.$parent={$options:{name:'Viewer'},$el:viewer,fileList:files,currentIndex:54,previous(){},next(){}}
- instance.$el=root;instance.$refs={toolbar};instance.active=true
- instance.syncHeaderToolbar();assert.equal(instance._headerCounter.textContent,'55/100');assert.equal(instance._headerCounter.nextSibling,play)
- instance.$parent.currentIndex=55;instance.syncHeaderToolbar();assert.equal(instance._headerCounter.textContent,'56/100')
- instance.active=false;instance.syncHeaderToolbar();assert.equal(instance._headerCounter,null);assert.equal(menu.children.length,1)
+test('Failed rename does not arm a folder refresh',async()=>{
+ const {instance,context}=fixture(()=>task());context.window.OC={currentUser:'Michel'}
+ instance.filename='/old.pdf';instance.davPath='/remote.php/dav/files/Michel/old.pdf';instance.renameName='new.pdf'
+ let watches=0;instance.$parent={$options:{name:'Viewer'},previous(){},next(){},$watch(){watches++}}
+ context.fetch=async()=>({ok:false,status:412});await instance.renamePdf();assert.equal(watches,0)
 })

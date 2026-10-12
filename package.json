@@ -1,6 +1,6 @@
 {
   "name": "mjms_pdf_viewer",
-  "version": "1.1.7",
+  "version": "1.1.11",
   "scripts": {
     "build": "webpack --node-env production",
     "dev": "webpack --node-env development",
@@ -8,17 +8,23 @@
     "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
+    "@nextcloud/event-bus": "^3.3.3",
+    "@nextcloud/files": "^3.12.2",
     "@nextcloud/initial-state": "3.0.0",
+    "@nextcloud/l10n": "^3.4.1",
     "@nextcloud/router": "^3.2.0",
     "@nextcloud/viewer": "^1.0.0",
     "pdfjs-dist": "^4.0.0",
     "vue": "^2.7.16"
   },
   "devDependencies": {
+    "@babel/parser": "^7.29.9",
     "@nextcloud/webpack-vue-config": "^6.0.0",
     "copy-webpack-plugin": "^14.0.0",
+    "jsdom": "^26.1.0",
     "terser-webpack-plugin": "^5.6.1",
     "vue-loader": "^15.11.1",
+    "vue-template-compiler": "^2.7.16",
     "webpack": "^5.90.0",
     "webpack-cli": "^6.0.1"
   },
