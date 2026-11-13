@@ -113,3 +113,7 @@ Le renommage se fait dans une popup dédiée. Après un renommage réussi, quitt
 
 ## 1.1.11 — langues
 L’interface suit automatiquement la langue du compte Nextcloud : français, anglais ou polonais, avec anglais par défaut. Les catalogues l10n contiennent les boutons, la popup, les erreurs et les libellés d’accessibilité. Le résumé et la description de la fiche App Store sont également traduits.
+
+## Détection de PDF Manager (21 octobre 2026)
+
+À chaque ouverture ou activation d’un PDF, le visionneur interroge son endpoint `GET /api/manager-state`. Le serveur vérifie `isEnabledForUser` pour l’utilisateur connecté, sans cache. Le menu Actions reste entièrement masqué tant que Manager n’est pas confirmé actif, ainsi qu’en cas d’erreur. Cette détection ne dépend plus de l’état initial de la page ni d’un rechargement F5. Aucun changement de PDF Manager n’est nécessaire.

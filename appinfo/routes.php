@@ -1,2 +1,4 @@
 <?php
-return ['routes' => []];
+return ['routes' => [
+    ['name' => 'integration#managerState', 'url' => '/api/manager-state', 'verb' => 'GET'],
+]];

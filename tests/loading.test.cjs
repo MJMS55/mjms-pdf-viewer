@@ -6,7 +6,7 @@ const script = fs.readFileSync('src/views/PDFView.vue', 'utf8').match(/<script>(
   .replace(/let pdfjsPromise[\s\S]*?(?=import \{ generateFilePath)/, 'const loadPdfJs = async () => pdfjsLib\n').replace(/^import .*$/gm, '').replace('export default', 'module.exports =')
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => {resolve=a;reject=b}); return {promise,resolve,reject} }
 function fixture(getDocument) {
- const context={URL,setTimeout,window:{location:{href:'https://cloud.test/files',origin:'https://cloud.test'},removeEventListener(){}},document:{removeEventListener(){}},module:{exports:{}},pdfjsLib:{GlobalWorkerOptions:{},getDocument},generateFilePath:()=>'/worker.mjs',generateUrl:p=>p,loadState:()=>true}
+ const context={URL,setTimeout,window:{location:{href:'https://cloud.test/files',origin:'https://cloud.test'},removeEventListener(){}},document:{removeEventListener(){}},module:{exports:{}},pdfjsLib:{GlobalWorkerOptions:{},getDocument},generateFilePath:()=>'/worker.mjs',generateUrl:p=>p,fetch:async()=>({ok:true,json:async()=>({enabled:true})})}
  vm.runInNewContext(script,context)
  const component=context.module.exports, events=[]
  const instance={...component.data(),fileList:[],source:'',davPath:'/test.pdf',fileid:7,$refs:{canvas:{getContext:()=>({})}},$nextTick:()=>Promise.resolve(),$emit:(...args)=>events.push(args)}
@@ -127,18 +127,19 @@ test('Activation during rendering keeps the spinner until rendering completes', 
  assert.deepEqual(events,[['update:loaded',false],['update:loaded',true]])
 })
 
-test('Manager state can arrive after creation and is refreshed on activation', () => {
+test('Manager state comes from server on first activation without initial page state', async () => {
  const {instance,component}=fixture(()=>task())
  assert.equal(instance.managerUrl,null)
  component.watch.active.call(instance,true)
+ await flush()
  assert.equal(instance.managerUrl,'/apps/mjms_pdf_manager/?fileId=7')
 })
 
 
-test('Disabled or missing Manager state never exposes the action', () => {
+test('Disabled Manager state never exposes the action', async () => {
  const {instance,context}=fixture(()=>task())
- context.loadState=()=>false
- instance.refreshManagerState()
+ context.fetch=async()=>({ok:true,json:async()=>({enabled:false})})
+ await instance.refreshManagerState()
  assert.equal(instance.managerUrl,null)
 })
 
@@ -305,4 +306,57 @@ test('Teleported content uses native root and updates the visible header copy',(
  instance.syncHeaderToolbar();assert.equal(instance._headerCounter.textContent,'55/100');assert.equal(instance._headerCounter.nextSibling,play)
  instance.$parent.currentIndex=55;instance.syncHeaderToolbar();assert.equal(instance._headerCounter.textContent,'56/100')
  instance.active=false;instance.syncHeaderToolbar();assert.equal(instance._headerCounter,null);assert.equal(menu.children.length,1)
+})
+
+test('First mount resolves Manager state and renders the whole menu only when enabled', async () => {
+ const compiler=require('vue/compiler-sfc')
+ const template=fs.readFileSync('src/views/PDFView.vue','utf8').match(/<template>([\s\S]*?)<\/template>/)[1]
+ const compiled=compiler.compileTemplate({source:template,filename:'PDFView.vue'})
+ assert.deepEqual(compiled.errors,[])
+ const {render,staticRenderFns}=new Function(compiled.code+';return {render,staticRenderFns}')()
+ for(const enabled of [true,false]) {
+  const {instance,component,context}=fixture(()=>task())
+  let calls=0
+  context.fetch=async(url,options)=>{
+   calls++;assert.equal(url,'/apps/mjms_pdf_viewer/api/manager-state')
+   assert.equal(options.cache,'no-store');assert.equal(options.credentials,'same-origin')
+   return {ok:true,json:async()=>({enabled})}
+  }
+  context.document.addEventListener=()=>{};context.window.addEventListener=()=>{}
+  instance.loadDocument=()=>{};instance.syncHeaderToolbar=()=>{}
+  component.mounted.call(instance);await flush()
+  assert.equal(calls,1);assert.equal(instance.managerEnabled,enabled)
+  const Vue=require('vue')
+  const view=new Vue({data:()=>({...instance,managerUrl:instance.managerUrl,hasPreviousPdf:instance.hasPreviousPdf,hasNextPdf:instance.hasNextPdf,pdfCounterText:instance.pdfCounterText,pdfCounterLabel:instance.pdfCounterLabel}),render,staticRenderFns})
+  const nodes=[];const walk=node=>{if(!node)return;nodes.push(node);(node.children||[]).forEach(walk)}
+  walk(view._render())
+  assert.equal(nodes.some(n=>n.tag==='details'),enabled)
+  assert.equal(nodes.some(n=>n.tag==='a'&&n.data.attrs.href==='/apps/mjms_pdf_manager/?fileId=7'),enabled)
+  view.$destroy()
+ }
+})
+
+test('A newer disabled response wins over an older enabled request', async () => {
+ const {instance,context}=fixture(()=>task()),old=deferred()
+ context.fetch=()=>old.promise
+ const first=instance.refreshManagerState()
+ context.fetch=async()=>({ok:true,json:async()=>({enabled:false})})
+ await instance.refreshManagerState()
+ old.resolve({ok:true,json:async()=>({enabled:true})});await first
+ assert.equal(instance.managerUrl,null)
+})
+
+test('Failed, malformed and unauthenticated state hides previously enabled action', async () => {
+ for(const response of [()=>Promise.reject(new Error('offline')),async()=>({ok:false}),async()=>({ok:true,json:async()=>({enabled:'true'})}),async()=>({ok:true,json:async()=>{throw new Error('invalid JSON')}})]) {
+  const {instance,context}=fixture(()=>task());instance.managerEnabled=true;context.fetch=response
+  await instance.refreshManagerState();assert.equal(instance.managerUrl,null)
+ }
+})
+
+test('Destroyed viewer ignores pending Manager response', async () => {
+ const {instance,component,context}=fixture(()=>task()),pending=deferred()
+ context.fetch=()=>pending.promise
+ const request=instance.refreshManagerState();component.beforeDestroy.call(instance)
+ pending.resolve({ok:true,json:async()=>({enabled:true})});await request
+ assert.equal(instance.managerUrl,null)
 })

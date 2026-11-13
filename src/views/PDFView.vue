@@ -45,7 +45,7 @@ function loadPdfJs() {
   return pdfjsPromise
 }
 import { generateFilePath, generateUrl } from '@nextcloud/router'
-import { loadState } from '@nextcloud/initial-state'
+
 
 
 // One close adapter per Viewer session, shared by preloaded PDF components.
@@ -146,6 +146,7 @@ export default {
   },
   created() {
     // PDF.js objects must stay outside Vue 2's reactive observation.
+    this._managerRequest = 0
     this._thumbnailTask = null
     this._loadId = 0
     this._loadingTask = null
@@ -155,7 +156,7 @@ export default {
   mounted() {
     this.refreshManagerState()
     this.rememberCurrentPdf()
-    this._onReady = () => { this.refreshManagerState(); this.syncHeaderToolbar() }
+    this._onReady = () => this.syncHeaderToolbar()
     document.addEventListener('DOMContentLoaded', this._onReady)
     this.$nextTick(() => this.syncHeaderToolbar())
     this._onFocus = () => { if (!document.hidden && !this.busy) this.loadDocument() }
@@ -165,6 +166,7 @@ export default {
     this.loadDocument()
   },
   beforeDestroy() {
+    this._managerRequest++
     document.removeEventListener('DOMContentLoaded', this._onReady)
     this._headerObserver?.disconnect()
     this.restoreHeaderToolbar()
@@ -191,8 +193,23 @@ export default {
     rememberCurrentPdf(active = this.active) {
       if (active) rememberReturnTarget(this.viewerHost(), { fileid: this.fileid, filename: this.filename })
     },
-    refreshManagerState() {
-      this.managerEnabled = loadState('mjms_pdf_viewer', 'manager-enabled', false) === true
+    async refreshManagerState() {
+      // Initial page state may be missing on the first Files navigation.
+      // Ask the server for this user's current enablement on every opening.
+      const request = ++this._managerRequest
+      this.managerEnabled = false
+      try {
+        const response = await fetch(generateUrl('/apps/mjms_pdf_viewer/api/manager-state'), {
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        })
+        if (!response.ok) return
+        const state = await response.json()
+        if (request === this._managerRequest) this.managerEnabled = state.enabled === true
+      } catch {
+        // Unavailable or unauthenticated: keep the entire Actions menu hidden.
+      }
     },
     setLoaded(value) {
       this.loaded = value
