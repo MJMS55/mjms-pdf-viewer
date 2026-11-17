@@ -1,6 +1,6 @@
 {
   "name": "mjms_pdf_viewer",
-  "version": "1.1.7",
+  "version": "1.1.18",
   "scripts": {
     "build": "webpack --node-env production",
     "dev": "webpack --node-env development",
@@ -8,6 +8,8 @@
     "test": "node --test tests/*.test.cjs"
   },
   "dependencies": {
+    "@nextcloud/event-bus": "3.3.3",
+    "@nextcloud/files": "4.1.0",
     "@nextcloud/initial-state": "3.0.0",
     "@nextcloud/router": "^3.2.0",
     "@nextcloud/viewer": "^1.0.0",

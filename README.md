@@ -112,7 +112,7 @@ Validation locale : 22 tests, dont formulaire monté en DOM Vue réel, compilati
 Le renommage se fait dans une popup dédiée. Après un renommage réussi, quitter le visionneur recharge automatiquement la page du dossier pour afficher le nouveau nom. Aucun rechargement n’est déclenché si le renommage est annulé ou refusé.
 
 ## 1.1.11 — langues
-L’interface suit automatiquement la langue du compte Nextcloud : français, anglais ou polonais, avec anglais par défaut. Les catalogues l10n contiennent les boutons, la popup, les erreurs et les libellés d’accessibilité. Le résumé et la description de la fiche App Store sont également traduits.
+L’interface suit automatiquement la langue du compte Nextcloud : français, anglais, polonais, espagnol, basque, italien, allemand ou néerlandais, avec anglais par défaut. Les catalogues l10n contiennent les boutons, la popup, les erreurs et les libellés d’accessibilité. Le résumé et la description de la fiche App Store sont également traduits.
 
 ## Détection de PDF Manager (21 octobre 2026)
 

@@ -44,3 +44,45 @@ Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/)
 ## 1.1.11 — 2026-10-12
 - Interface, messages et libellés d’accessibilité traduits en anglais, français et polonais.
 - Résumé et description de la fiche App Store disponibles dans les trois langues.
+
+## 1.1.12 — 16 novembre 2026
+
+- Renommage direct : prise en charge des réponses vides, HTML et des erreurs HTTP sans erreur de décodage JSON.
+- Jeton CSRF lu depuis la page Nextcloud, avec repli sur OC.requestToken.
+- Incrément de version pour permettre la mise à jour des routes Nextcloud.
+- Champ de renommage : largeur minimale préservée après rechargement dans l’en-tête Nextcloud.
+
+## 1.1.13 — 16 novembre 2026
+
+- Accès direct à MJMS-PDF-Manager en début de barre.
+- État Manager fourni par Nextcloud dès le chargement ; une panne temporaire de la vérification ne masque plus le lien confirmé actif.
+
+## 1.1.14 — 16 novembre 2026
+
+- Suppression du remplacement de Viewer.onClose, incompatible avec les propriétés en lecture seule.
+- Barre de commandes conservée dans le composant pour stabiliser la navigation entre PDF et les composants préchargés.
+- Rechargement explicite après renommage, regroupé avec les changements d’URL pour éviter les doubles chargements.
+- Remplacement des métadonnées du fichier sans affectation aux propriétés natives en lecture seule.
+
+## 1.1.15 — 16 novembre 2026
+
+- Erreurs de renommage dans un bandeau contrasté avec focus accessible, sans codes HTTP.
+- Titre natif du PDF masqué, nom conservé dans le champ de renommage.
+- Rechargement du dossier à la fermeture du lecteur après un renommage réussi, même après navigation entre PDF, sans modifier onClose.
+
+## 1.1.16 — 16 novembre 2026
+
+- Commandes PDF et boutons natifs Nextcloud alignés sur une seule ligne, sans déplacement des éléments Vue.
+- Espace réservé à droite pour les actions natives ; commandes PDF défilantes horizontalement sur écran étroit.
+
+## 1.1.17 — 16 novembre 2026
+
+- Actualisation du dossier uniquement quand le Viewer libère son fichier courant, sans dépendre des transitions visuelles.
+- Nouveau nom et nouvelle URL conservés pour les PDF préchargés après renommage et retour au document.
+
+## 1.1.18 — 17 novembre 2026
+
+- Synchronisation du cache Fichiers Nextcloud après renommage via les événements natifs moved, updated et renamed, avant la navigation.
+- État des PDF renommés réactif pour les composants préchargés avant le renommage.
+- Préservation explicite du type MIME et de l’identifiant des métadonnées à accesseurs.
+- Test avec les méthodes de navigation amont de Nextcloud 35 et résolution du chemin par le cache du dossier.
