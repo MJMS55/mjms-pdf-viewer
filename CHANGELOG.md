@@ -1,3 +1,9 @@
+# 1.1.19 — 2026-11-25
+
+- Expand the French and English App Store descriptions and update the screenshot hosted on mjms.fr.
+- Explicitly require disabling Nextcloud’s PDF viewer app (`files_pdfviewer`) in all eight listing languages.
+- Update MJMS author details. Application behavior is unchanged.
+
 # Changelog
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
